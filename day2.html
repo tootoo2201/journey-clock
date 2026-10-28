@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="신생아 가정의 '잘 못 잔 날' 24시간 고객 여정을 원형 시계로 보여주는 여정지도">
+<title>잘 못 잔 날 여정 시계</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: 왼쪽 정사각형 시계(자정이 위, 정오가 아래 · 바깥 고리는 시간대별 하늘색) + 오른쪽 상세 패널.
+   행동은 시계 안에 짧은 키워드로 늘 보이고, 누르면 그 자리에서 글자가 커진다. 라이트 전용 */
+:root{
+  color-scheme:light;
+  --bg:#eef0f4; --surface:#ffffff; --surface2:#f3f4f8; --line:#dcdfe7;
+  --fg:#171a23; --fg2:#4b5162; --fg3:#868c9c;
+  --accent:#f0a020; --pain:#e5484d; --pain-bg:#fff1f0; --sel:#171a23;
+  --font:'Noto Sans KR',system-ui,-apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14px;line-height:1.55;
+  word-break:keep-all;overflow-wrap:break-word;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:14px}
+.app{height:100%;max-width:1600px;margin:0 auto;display:grid;grid-template-rows:auto minmax(0,1fr);gap:12px}
+
+/* 머리글 */
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 20px}
+.ttl{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;min-width:0}
+.day{font-family:var(--mono);font-size:12px;font-weight:600;background:var(--fg);color:var(--surface);border-radius:6px;padding:2px 8px}
+h1{font-size:clamp(20px,2.1vw,26px);font-weight:900;margin:0;letter-spacing:-.02em}
+.persona{color:var(--fg2);font-size:13px;margin:0}
+.btn{font:inherit;font-size:13px;font-weight:700;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:9px;padding:7px 14px;cursor:pointer}
+.btn:hover{border-color:var(--fg3)}
+.btn:disabled{opacity:.4;cursor:default}
+.btn.dark{background:var(--fg);color:var(--surface);border-color:var(--fg)}
+.btn:focus-visible,.lab:focus-visible,.hrow:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+/* 무대 */
+.stage{display:grid;grid-template-columns:minmax(0,1fr) minmax(340px,420px);gap:14px;min-height:0}
+.boardwrap{min-height:0;container-type:size;display:flex;align-items:center;justify-content:center}
+.board{position:relative;width:min(100cqw,100cqh);aspect-ratio:1/1;container-type:inline-size;background:var(--surface);border:1px solid var(--line);border-radius:24px}
+#svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+#svg text{font-family:var(--font)}
+.hit{cursor:pointer}
+
+/* 시계 위 행동 라벨 (HTML 버튼으로 얹음) */
+.lab{position:absolute;left:var(--x);top:var(--y);transform:translate(-50%,-50%);
+  font:inherit;font-size:clamp(9px,1.5cqw,16px);font-weight:700;line-height:1.18;letter-spacing:-.01em;color:var(--fg);
+  text-align:center;background:transparent;border:0;border-radius:10px;padding:2px 3px;cursor:pointer;white-space:nowrap;
+  transition:left .38s cubic-bezier(.2,.9,.25,1),top .38s cubic-bezier(.2,.9,.25,1),font-size .38s cubic-bezier(.2,.9,.25,1),opacity .25s,background-color .25s,box-shadow .25s;z-index:2}
+.lab:hover{background:var(--surface2)}
+.lab .t,.lab .f,.lab .w{display:none}
+.lab.extra{display:none}
+.board.has-sel .lab:not(.on){opacity:.28}
+.lab.on{display:block;left:var(--x2);top:var(--y2);font-size:clamp(14px,2.2cqw,23px);background:var(--surface);
+  box-shadow:0 6px 24px rgba(23,26,35,.18),0 0 0 2px var(--sel);padding:.5em .75em .6em;white-space:normal;width:max-content;max-width:min(20.5cqw,240px);z-index:6;text-align:left}
+.lab.night{color:#ffffff}
+.lab.night:hover{background:rgba(255,255,255,.14)}
+.lab.night.on{color:var(--fg);background:var(--surface)}
+.lab.on .k{display:none}
+.lab.on .t{display:block;font-family:var(--mono);font-size:.62em;font-weight:600;color:var(--fg2);margin-bottom:.15em}
+.lab.on .f{display:block;font-weight:900;line-height:1.25}
+.lab.on .w{display:inline-block;font-size:.55em;font-weight:700;border-radius:999px;padding:.1em .6em;margin-top:.45em;color:var(--fg)}
+
+/* 가운데 */
+.center{position:absolute;left:50%;top:50%;width:22.5%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;z-index:1;display:flex;flex-direction:column;align-items:center;gap:.25em}
+.center .big{font-size:clamp(14px,2.5cqw,26px);font-weight:900;letter-spacing:-.02em;line-height:1.15}
+.center .sm{font-size:clamp(9px,1.2cqw,13px);color:var(--fg2);line-height:1.35}
+.center .em{font-size:clamp(20px,4.2cqw,44px);line-height:1}
+.center .tm{font-family:var(--mono);font-weight:600;font-size:clamp(11px,1.7cqw,18px)}
+.center .q{font-size:clamp(9px,1.28cqw,14px);line-height:1.4;color:var(--fg)}
+.center .hint{font-size:clamp(9px,1.15cqw,12px);font-weight:700;color:var(--accent);margin-top:.2em}
+
+/* 패널 */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:24px;padding:20px;min-height:0;display:flex;flex-direction:column;gap:14px;overflow:auto}
+.panel h2{font-size:20px;margin:0;font-weight:900;letter-spacing:-.01em}
+.muted{color:var(--fg2);font-size:13px;margin:0}
+.guide{display:grid;grid-template-columns:30px 1fr;gap:8px 10px;align-items:center;font-size:13px;color:var(--fg2);margin:0}
+.guide svg{display:block}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{font-size:11.5px;font-weight:700;border-radius:6px;padding:2px 8px}
+.lbl{font-size:11px;font-weight:700;color:var(--fg3);letter-spacing:.06em;margin-bottom:5px}
+.phase{display:flex;flex-direction:column;gap:2px}
+.phase h3{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:900;margin:6px 0 2px}
+.phase h3 i{width:12px;height:12px;border-radius:3px;display:inline-block;outline:1px solid var(--line)}
+.phase h3 span{font-family:var(--mono);font-size:11px;font-weight:500;color:var(--fg3)}
+.hrow{display:grid;grid-template-columns:44px minmax(0,1fr) 22px 10px;align-items:center;gap:8px;text-align:left;font:inherit;background:transparent;border:0;border-radius:8px;padding:5px 6px;cursor:pointer;color:var(--fg)}
+.hrow:hover{background:var(--surface2)}
+.hrow .tm{font-family:var(--mono);font-size:12px;color:var(--fg2)}
+.hrow .nm{font-size:13.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hrow .pd{width:8px;height:8px;border-radius:50%;background:var(--pain)}
+
+.top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.phtag{display:inline-block;font-size:12.5px;font-weight:700;border-radius:999px;padding:4px 11px}
+.hour{display:flex;flex-direction:column;gap:14px;animation:fade .35s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.hhead{display:flex;align-items:flex-start;gap:12px}
+.hhead .tm{font-family:var(--mono);font-weight:600;font-size:28px;line-height:1.1}
+.hhead .st{font-size:13px;color:var(--fg2);margin-top:2px}
+.hhead .emo{margin-left:auto;text-align:center;font-size:12px;color:var(--fg2);font-weight:700}
+.hhead .emo b{display:block;font-size:34px;line-height:1.1}
+.who{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:2px 10px;margin-bottom:6px}
+.title{font-weight:900;font-size:22px;line-height:1.3;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.desc{color:var(--fg);font-size:15px;line-height:1.75;margin:0}
+.quote{font-size:15px;line-height:1.6;border-left:4px solid var(--emo-c);background:var(--surface2);border-radius:0 10px 10px 0;padding:10px 14px}
+.quote small{display:block;font-size:11.5px;color:var(--fg3);font-weight:700;margin-bottom:2px}
+.painbox{background:var(--pain-bg);color:#b3261e;font-size:14px;font-weight:500;line-height:1.6;padding:10px 14px;border-radius:10px;display:flex;gap:8px}
+.painbox::before{content:"";flex:none;width:9px;height:9px;border-radius:50%;background:var(--pain);margin-top:.55em}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tag{font-size:13px;border:1px solid var(--line);background:var(--surface2);border-radius:8px;padding:3px 10px;color:var(--fg2);display:inline-flex;align-items:center;gap:6px}
+.tag svg{flex:none}
+.ins{display:flex;flex-direction:column;gap:8px}
+.icard{border-radius:10px;padding:10px 14px;color:#2b2512}
+.icard .k{font-size:11px;font-weight:700}
+.icard .h{font-size:15px;font-weight:900;margin:1px 0}
+.icard .b{font-size:13px;line-height:1.55;color:#3a3426}
+.nav{margin-top:auto;display:flex;flex-direction:column;gap:10px;padding-top:12px;border-top:1px solid var(--line)}
+.nav .row{display:flex;align-items:center;gap:8px}
+.nav .pos{font-family:var(--mono);font-size:12.5px;color:var(--fg2);margin-right:auto}
+.progress{display:flex;gap:3px}
+.progress i{flex:1;height:6px;border-radius:2px;display:block;opacity:.45}
+.progress i.on{opacity:1;outline:2px solid var(--fg);outline-offset:1px}
+.keys{font-size:11.5px;color:var(--fg3)}
+kbd{font-family:var(--mono);font-size:10.5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px;background:var(--surface2);color:var(--fg2)}
+
+body.present header .persona{display:none}
+@container (max-width:600px){.center .q,.center .hint,.center .ov{display:none}.lab.on{max-width:34cqw}}
+@media (prefers-reduced-motion:reduce){.lab{transition:none}.hour{animation:none}}
+@media (max-width:900px){
+  html,body{height:auto}
+  .app{height:auto}
+  .stage{grid-template-columns:minmax(0,1fr)}
+  .boardwrap{container-type:inline-size}
+  .board{width:100%}
+  .panel{overflow:visible}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="ttl">
+      <span class="day">DAY 2</span>
+      <h1>잘 못 잔 날, 24시간</h1>
+      <p class="persona">맞벌이 부모 + 낮 시간 도우미 · 아기 10주 · 13시 수유 중 사레, 밤새 약 1시간마다 깸</p>
+    </div>
+    <button class="btn dark" id="presentBtn" type="button">발표 모드</button>
+  </header>
+  <div class="stage">
+    <div class="boardwrap">
+      <section class="board" id="board" aria-label="잘 못 잔 날 24시간 여정 시계">
+        <svg id="svg" viewBox="0 0 1000 1000" role="img" aria-label="자정이 위, 정오가 아래인 24시간 원형 여정지도"></svg>
+        <div class="center" id="center" aria-hidden="true"></div>
+      </section>
+    </div>
+    <aside class="panel" id="panel" aria-live="polite"></aside>
+  </div>
+</div>
+
+<script>
+/* ───────── 데이터 (잘 못 잔 날.png 기준) ───────── */
+const IC={A:['자동 기록','#a8dbff','#0b4f80'],W:['위급상황 감지','#c6ff8a','#2f6600'],I:['정보 · 육아 상식','#ffb3d1','#8a1d4e'],S:['수면 관리','#ffc58a','#7a3a00'],C:['커뮤니케이션','#ffe97a','#6b5800'],P:['깨어있을 때 · 놀이','#d2fdff','#0b5f6b'],N:['새로운 기능','#cdb6ff','#2e0f6b']};
+const ACT={'엄마':'#fde2ec','아빠':'#e1ecfd','도우미':'#e0f2e9'};
+const EMO=[['🙂','#2fa866','편안'],['😐','#c4b028','보통'],['😟','#f0883a','불안'],['😫','#e5484d','한계']];
+const S_INS=['S','수면 유도 모드','조명 자동 조절 + 백색소음'];
+const HAND=['C','원터치 인계 리포트','밤사이 수유·깸·수면을 한 장 요약으로 도우미에게 자동 전달'];
+// [시각, 상태, 주체, 행동 제목, 설명, 터치포인트, 페인포인트, 감정레벨, 감정주체, 감정문구, 인사이트, 시계 키워드, 아이콘]
+const H=[
+['09:00','😴 1차 낮잠 09:20–10:00','엄마','출근 전 상황 인계하기','출근 준비를 하며 "새벽 3시에 먹였고 4시까지 안 잤어요…"라고 기억을 더듬어 도우미에게 말로 전달한다. 인계 후 도우미가 아기를 안아 40분간 낮잠을 재운다.','현관|메모지|아기침대','밤사이 수유·깸 기록이 엄마 기억에만 있어 인계가 길어지고 중요한 내용이 빠진다',2,'엄마','“새벽에 몇 시에 먹였더라… 메모 어디 뒀지?”',[HAND],'인계','note'],
+['10:00','🍼 150ml','도우미','분유 먹이고 기저귀 교체하기','분유 150ml를 먹이고 트림을 시킨 뒤 기저귀를 교체한다. 마지막 수유 시간이 헷갈려 엄마에게 카톡으로 다시 확인한다.','젖병|분유포트|기저귀 교환대|휴대폰','마지막 수유 시간·양을 확인하려면 회사에 있는 엄마에게 매번 연락해야 하고, 답이 늦으면 수유 타이밍을 놓친다',1,'도우미','“어머님, 마지막 수유가 7시 맞으시죠?”',[['A','수유·기저귀 자동 기록','"마지막 수유 07:00 · 150ml"를 엄마에게 묻지 않고 바로 확인']],'분유·\n기저귀','bottle'],
+['11:00','','도우미','낮잠 재우기','깨어있은 지 90분이 넘자 아기가 하품하고 눈을 비빈다. 안고 흔들어 재운 뒤 침대에 내려놓자마자 아기가 깨서 다시 안아 올린다.','아기침대|속싸개|블라인드','졸림 신호를 놓쳐 과각성 상태가 되고, 내려놓기만 하면 깨는 \'등센서\' 때문에 계속 안고 있어야 한다',2,'도우미','“눕히기만 하면 깨네… 팔이 떨어질 것 같아요”',[S_INS],'낮잠\n재우기','bed'],
+['12:00','😴 2차 낮잠 11:40–13:00','도우미','안아서 재우고 점심 먹기','30분간 안고 흔들어 겨우 재운다. 깰까 봐 휴대폰으로 백색소음을 틀어두고, 서서 점심을 먹으며 젖병을 세척·소독한다.','아기침대|휴대폰 백색소음|젖병 소독기','아기가 깰까 봐 마음 편히 쉬거나 식사할 수 없고, 자리를 비우면 상태를 확인할 방법이 없다',1,'도우미','“겨우 잠들었다… 깨기 전에 얼른 밥 먹자”',[['C','보호자에게 상태 알림','"아기 잘 자는 중 · 40분째" 간단 상태를 폰으로']],'서서\n점심','phone'],
+['13:00','🍼 130ml (사레)','도우미','수유 중 사레','아기가 급하게 분유를 먹다가 사레가 들려 기침하며 얼굴이 빨개진다. 당황해 젖병을 빼고 안아 올려 등을 두드린다.','젖병|수유쿠션|소파','아이에게 문제가 생겨 패닉에 빠진다',3,'도우미','“어머 어떡해! 얼굴이 빨개졌어요!”',[['W','이상 징후 긴급 알림','사레·호흡 정지 감지 즉시 도우미+부모에게 최우선 알림'],['I','응급처치 음성 가이드','"아기를 엎드리게 하고 등을 5회 두드리세요" 단계별 안내']],'사레!','bottle'],
+['14:00','😴 3차 낮잠 14:20–15:20','도우미','부모에게 상황 전달하기','아기가 진정되자 엄마에게 전화를 3통 걸지만 회의 중이라 받지 않는다. 카톡으로 긴 설명과 사진을 보낸다. 지친 아기는 1시간 낮잠을 잔다.','휴대폰(전화·카톡)','부모는 회의 중이라 바로 확인할 수 없고, 감정이 섞인 장문 설명이 오히려 불안을 키운다',3,'엄마','“부재중 3통…? 무슨 일이야?!”',[['A','사건 타임라인 기록','발생 시각·지속 시간·회복 상태 기록 → 소아과 진료 시 공유']],'부재중\n3통','phone'],
+['15:00','','엄마','사레 대처법 찾아보기','뒤늦게 메시지를 확인한 엄마가 당황해 "신생아 사레 대처"를 검색한다. 정보가 제각각이라 도우미에게 무엇을 따르라고 할지 바로 전하지 못한다.','휴대폰 검색|회사 회의실','검색 정보가 제각각이라 믿기 어렵고, 병원에 가야 하는지 판단할 기준이 없다',3,'엄마','“어떡하지… 검색해도 다 말이 달라”',[],'대처법\n검색','search'],
+['16:00','😴 4차 낮잠 16:00–16:50','도우미','하루 기록 정리하기','아기가 낮잠을 자는 동안 오늘의 수유 횟수와 배변·낮잠·사레 상황을 메모지에 정리하고, 엄마에게 보낼 사진을 고른다.','메모지|휴대폰 사진첩|아기침대','하루 기록을 기억에 의존해 정리하느라 누락이 생긴다',2,'도우미','“오늘 몇 번 먹었더라… 다시 세어봐야겠다”',[['A','데일리 리포트 자동 생성','수유 4회 · 낮잠 4회(4시간) · 배변 2회 · 이벤트 1건 자동 정리']],'기록\n정리','note'],
+['17:00','🍼 150ml','도우미','수유하고 놀아주기','낮잠에서 깬 아기에게 젖병을 세워 천천히 150ml를 먹인다. 모빌을 보여주며 동요를 불러주고, 늦은 낮잠을 재워도 될지 고민한다.','젖병|수유쿠션|모빌','',0,'도우미','“세워서 먹이니 잘 먹네. 방긋 웃었어요!”',[['I','수유 자세 코칭','수유 시작 시 "젖병을 세워 천천히" 리마인드'],['S','낮잠 시간 조절','밤잠에 지장 없도록 정해진 시간에 조명·음악으로 부드럽게 깨우기']],'수유·\n놀이','bottle'],
+['18:00','도우미 퇴근','엄마','도우미에게 인계받기','현관에서 5분간 구두로 인계받으며 사레 상황을 다시 듣는다. 인계가 끝나면 도우미가 퇴근한다.','현관|메모지','짧은 인계 시간에 아이의 상황을 자세히 알고 싶다',2,'엄마','“제가 없을 때 그런 일이… 내일도 괜찮을까요?”',[HAND],'퇴근\n인계','door'],
+['19:00','','아빠','목욕시키기','귀가한 아빠가 아기를 목욕시킨다. 아빠는 낮에 있었던 사레 상황을 이때 처음 듣고 엄마에게 다시 묻는다.','욕조|체온계|아기 로션','아빠는 낮 상황을 몰라 같은 질문을 반복하고, 엄마는 지친 상태로 다시 설명해야 한다',1,'아빠','“목욕하니 기분 좋지? 근데 낮에 사레라니, 괜찮은 거야?”',[['C','가족 상황 공유','아빠도 이동 중에 낮 상황을 미리 확인 → 반복 설명 X']],'목욕','bath'],
+['20:00','🍼 150ml · 😴 밤잠 20:40~','엄마','수유하고 밤잠 준비하기','방 조명을 끄고 자장가를 튼 뒤 아기를 안고 150ml를 먹이며 재운다.','수유등|암막커튼|아기침대','아이를 빠르게 재우고 남은 시간에 쉬고 싶어한다',1,'엄마','“오늘은 좀 길게 자 주라…”',[S_INS],'밤잠\n준비','lamp'],
+['21:00','😴','아빠','집안일하며 아기 확인하기','늦은 저녁을 먹고 젖병을 세척한다. 홈캠에 작은 뒤척임만 보여도 방에 들어가 확인한다.','홈캠|휴대폰|아기침대','작은 뒤척임에도 일어나 확인하느라 쉬지 못하고, 방에 들어가는 소리에 오히려 아기가 깬다',2,'아빠','“방금 소리 났지? 내가 가볼게”',[['C','진짜 깸일 때만 알림','뒤척임은 무음, 울음 지속 시에만 알림']],'홈캠\n확인','cam'],
+['22:00','깸 ①','엄마','깸 ① — 깬 이유 확인하기','잠든 지 1시간 만에 아기가 깬다. 기저귀·체온·배고픔을 하나씩 확인하며 우는 이유를 찾는다.','아기침대|기저귀|체온계','왜 깼는지 알 수 없어 배고픔·기저귀·체온을 하나씩 확인해야 하고, 그사이 울음이 커진다',2,'엄마','“벌써 깼어? 배고픈 건가, 더운 건가…”',[['I','아이 기분 원인 가이드','"막수 1시간 전 · 실내 26°C → 더위 가능성" 우선순위 제시'],['A','수면·깸 시간 자동 기록','몇 시에 깼는지 자동 기록']],'깸 ①','bed'],
+['23:00','🍼 120ml · 깸 ②','아빠','깸 ② — 밤중 수유하기','아기가 다시 잠들지 않아 불을 켜고 분유를 타서 먹인다. 트림을 시킨 뒤 안아서 재운다.','분유포트|젖병|천장 조명','',2,'아빠','“불 켜면 깨고 안 켜면 안 보이고…”',[S_INS,['A','수유·기저귀 자동 기록','막수 후 3시간 · 120ml 자동 기록']],'깸 ②\n수유','bottle'],
+['00:00','재우는 중','엄마','다시 재우기','수유 후에도 칭얼거리는 아기를 안고 방 안을 걸으며 재운다. 내일 출근을 생각하며 마음이 조급해진다.','아기띠|거실','다음 날 출근 걱정에 마음이 조급해지고, 그 긴장이 전해져 아기가 더 잠들지 못한다',2,'엄마','“내일 출근해야 하는데… 제발 자자”',[S_INS],'다시\n재우기','carrier'],
+['01:00','😴 잠듦','엄마','함께 잠들기','아기가 겨우 잠들자 침대에 조심스럽게 내려놓는다. 깨지 않도록 숨죽이며 옆에 누워 엄마도 잠든다.','아기침대|부부 침대','',0,'엄마','“드디어 잤다… 나도 얼른 자야지”',[],'잠듦','bed'],
+['02:00','깸 ③ 계속 울음','엄마','깸 ③ — 우는 아기 달래기','자는 줄 알았던 아기가 다시 깨서 계속 운다. 기저귀도 배고픔도 아닌 것 같아 왜 잠을 안 자는지 모른 채 안고 달랜다.','아기침대|기저귀','울음의 원인을 알 수 없어 해줄 수 있는 게 없다는 답답함과 걱정, 짜증이 커진다',3,'엄마','“또 깼어? 왜 우는지 모르겠어…”',[['I','아이 기분 원인 가이드','2~3개월 성장급등기·영아산통 가능성과 달래는 방법 안내'],['S','자가 진정 유도','깸 초기에 로봇이 먼저 "쉬-" 소리·토닥 2분 → 부모 개입 최소화']],'깸 ③\n울음','bed'],
+['03:00','🍼 120ml','엄마','숨소리 확인하고 수유하기','혹시 낮에 걸린 사레 때문인지 걱정하며 아기의 숨소리를 확인한다. 배가 고파하는 것 같아 분유 120ml를 먹인다.','홈캠|분유포트|젖병','아기가 또 사레에 들리지 않을까 걱정한다',3,'엄마','“혹시 낮에 사레 때문에 숨쉬기 힘든 건 아니겠지?”',[['A','수면 중 호흡·체온 모니터링','정상일 땐 "호흡 정상" 안심 표시, 이상 시에만 알림'],['I','배고픔 신호 구분','"마지막 수유 4시간 전 → 배고픔 가능성 높음" 수유 간격 기준 안내']],'숨소리\n확인','cam'],
+['04:00','깨어 있음','엄마','아기 재우려고 애쓰기','수유 후에도 아기가 4시까지 깨어 있다. 안아서 흔들고 토닥이고 자장가를 불러도 아기가 잠들지 못한다.','아기침대|수유등|자장가 앱','1시간 넘게 깨어 있는 아기를 재울 방법이 없어 체력과 인내심이 바닥난다',3,'엄마','“벌써 4시야… 나 이제 한계야”',[S_INS],'못\n재움','lamp'],
+['05:00','😴 05:00 잠듦','엄마','겨우 재우기','새벽 5시가 되어서야 아기가 겨우 다시 잠든다. 엄마는 1시간 남짓 남은 시간 동안 잠을 청한다.','아기침대|암막커튼','겨우 재웠지만 남은 수면 시간이 1시간 남짓이라 피로가 회복되지 않는다',2,'엄마','“겨우 잤다… 한 시간이라도 자자”',[S_INS],'겨우\n잠듦','bed'],
+['06:00','😴','아빠','기상해서 출근 준비하기','부모가 일어나 출근 준비를 시작한다.','휴대폰|거울','',3,'아빠','“몇 번 깼지? 5번? 7번?”',[['A','밤 수면 리포트','밤잠 조각잠 약 6시간 · 깸 3회 · 03~05시 장시간 각성 그래프']],'기상','phone'],
+['07:00','😴','엄마','피곤한 채로 출근 준비하기','밤새 거의 자지 못해 몸이 무겁다. 아기가 깰까 봐 조심스럽게 움직인다.','커피|휴대폰|현관','수면 부족 상태로 출근해 업무 집중력이 떨어지고, 이런 날이 매일 반복된다',3,'엄마','“커피 없이는 못 버티겠다…”',[],'출근\n준비','coffee'],
+['08:00','🍼 150ml · 기상','엄마','아침 수유하며 인계 메모 쓰기','깬 아기에게 150ml를 먹이면서 "수유 때 꼭 세워서 먹여주세요" 등 오늘 요청사항을 메모로 적는다.','젖병|메모지|냉장고','수유와 출근 준비를 동시에 하며 인계 메모까지 쓰기 벅차 중요한 내용을 빠뜨린다',2,'엄마','“오늘은 꼭 세워서 먹여달라고 해야지”',[HAND],'수유·\n메모','note'],
+['+1일 09:00','😴 1차 낮잠','도우미','출근해서 상황 인계받기','엄마가 인계 메모를 건네며 밤사이 상황과 요청사항을 다시 말로 설명하고, 도우미가 받아 적는다. 엄마는 지각 직전에 출근한다.','현관|인계 메모지','밤사이 수유·깸 기록이 엄마 기억에만 있어 인계가 길어지고 중요한 내용이 빠진다',2,'엄마','“또 지각이다… 오늘 낮엔 별일 없어야 할 텐데”',[],'다시\n인계','door']
+].map((r,i)=>({i,t:r[0],st:r[1],who:r[2],title:r[3],desc:r[4],tp:r[5]?r[5].split('|'):[],pain:r[6],lv:r[7],ew:r[8],q:r[9],ins:r[10],kw:r[11],ico:r[12],h:i===24?33:(9+i)}));
+const P=[
+ {n:'아침 인계',s:9,len:1,bg:'#fff3c4',fg:'#7a5a00'},
+ {n:'오전 돌봄 · 수유 · 낮잠',sh:'오전 돌봄',s:10,len:3,bg:'#ffe9a8',fg:'#7a5a00'},
+ {n:'위급 상황 · 수유 중 사레',sh:'위급 상황',s:13,len:3,bg:'#ff6b5e',fg:'#ffffff'},
+ {n:'오후 돌봄 · 퇴근 인계 준비',sh:'오후 돌봄',s:16,len:2,bg:'#ffe9a8',fg:'#7a5a00'},
+ {n:'저녁 교대 · 목욕 · 밤잠 준비',sh:'저녁 · 목욕',s:18,len:3,bg:'#ffc58a',fg:'#6b3500'},
+ {n:'밤중 잦은 깸 (약 1시간마다)',sh:'밤중 잦은 깸',s:21,len:9,bg:'#2b3a67',fg:'#ffffff'},
+ {n:'새벽 · 기상 · 출근 준비',sh:'새벽 · 출근',s:6,len:3,bg:'#9db4e8',fg:'#16213f'}];
+P.forEach(p=>{p.sh=p.sh||p.n;p.cols=H.filter(x=>x.i<24&&((x.h-p.s+24)%24)<p.len).map(x=>x.i)});
+const NIGHT=5; // 밤중 잦은 깸
+const phaseOfIdx=i=>i===24?0:P.findIndex(p=>p.cols.includes(i));
+const SLEEP=[[9+20/60,10],[11+40/60,13],[14+20/60,15+20/60],[16,16+50/60],[20+40/60,22],[25,26],[29,32]];
+const sleepMin=SLEEP.reduce((a,[s,e])=>a+(e-s)*60,0);
+const nPain=H.filter(x=>x.pain&&x.i<24).length, nIns=H.reduce((a,x)=>a+x.ins.length,0);
+
+/* ───────── 아이콘 (24×24 선 아이콘) ───────── */
+const ICO={
+ bed:'M3 19V7M21 19V7M3 10h18M3 16h18M7.5 10v6M12 10v6M16.5 10v6',
+ bottle:'M10 2.5h4M9.5 5h5M9 5.2C8.4 6 8 7 8 8.5V19a2 2 0 002 2h4a2 2 0 002-2V8.5c0-1.5-.4-2.5-1-3.3M8 12h8M8 15.5h8',
+ phone:'M8 2.5h8a1.5 1.5 0 011.5 1.5v16a1.5 1.5 0 01-1.5 1.5H8A1.5 1.5 0 016.5 20V4A1.5 1.5 0 018 2.5zM10.5 18.5h3',
+ cam:'M12 3a5.5 5.5 0 110 11 5.5 5.5 0 010-11zM12 7.3a1.2 1.2 0 110 2.4 1.2 1.2 0 010-2.4zM12 14v4M8 21h8l-1.5-3h-5z',
+ note:'M6 3h9l3 3v15H6zM15 3v3h3M9 11h6M9 14.5h6M9 18h4',
+ door:'M6 21V3h12v18M3.5 21h17M14.5 12.5v.01',
+ bath:'M3 12h18v2.5A5.5 5.5 0 0115.5 20h-7A5.5 5.5 0 013 14.5zM6 12V6.5a2 2 0 014 0M7 20l-1 2M17 20l1 2',
+ lamp:'M8.5 3h7l3 8h-13zM12 11v7M8 21h8',
+ search:'M10.5 4a6.5 6.5 0 110 13 6.5 6.5 0 010-13zM20 20l-4.8-4.8',
+ coffee:'M5 9h11v4.5A5.5 5.5 0 0110.5 19h-0A5.5 5.5 0 015 13.5zM16 10.5h1.5a2.2 2.2 0 010 4.4H16M8.5 3.5v2.5M12.5 3.5v2.5M4 21.5h13',
+ carrier:'M7 3.5l2.5 6M17 3.5l-2.5 6M6.5 9.5h11v4a5.5 5.5 0 01-11 0zM12 7.5a1.6 1.6 0 110-.01'
+};
+const icoSVG=(k,s=16,c='currentColor')=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICO[k]}"/></svg>`;
+const TP_ICO=[['침대','bed'],['젖병','bottle'],['분유','bottle'],['홈캠','cam'],['휴대폰','phone'],['카톡','phone'],['검색','search'],['메모','note'],['현관','door'],['욕조','bath'],['수유등','lamp'],['조명','lamp'],['커피','coffee'],['아기띠','carrier']];
+const tpIcon=t=>{const m=TP_ICO.find(([w])=>t.includes(w));return m?m[1]:null};
+
+/* ───────── 시계 기하: 자정이 위(0°), 시계 방향 ───────── */
+const NS='http://www.w3.org/2000/svg', CX=500, CY=500;
+const R={c:118,e3:150,e0:228,lab:292,lab2:230,pain0:334,pain1:342,s0:346,s1:392,num:369,ph0:398,ph1:424,ph:411,bub:455,bubR:18};
+const lvR=l=>R.e0-l*((R.e0-R.e3)/3);
+const ang=h=>h*15;
+const pt=(r,a)=>{const t=a*Math.PI/180;return [CX+r*Math.sin(t),CY-r*Math.cos(t)]};
+const f=n=>n.toFixed(1);
+function band(r0,r1,a0,a1){const L=(a1-a0)>180?1:0,[x0,y0]=pt(r1,a0),[x1,y1]=pt(r1,a1),[x2,y2]=pt(r0,a1),[x3,y3]=pt(r0,a0);
+  return `M${f(x0)} ${f(y0)}A${r1} ${r1} 0 ${L} 1 ${f(x1)} ${f(y1)}L${f(x2)} ${f(y2)}A${r0} ${r0} 0 ${L} 0 ${f(x3)} ${f(y3)}Z`}
+const el=(tag,attrs={},parent)=>{const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.appendChild(e);return e};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// 시간대별 하늘색 (낮 민트 → 노을 → 밤 남색 → 새벽)
+const SKY=[[0,'#0b1670'],[3,'#13207a'],[4.5,'#2c3480'],[5.5,'#5c4c80'],[6.5,'#9a6a62'],[7.5,'#c4985a'],[8.5,'#bcc08e'],[9.5,'#a6e3cf'],[11,'#a3f1e3'],[13,'#a3f1e3'],[14.5,'#aee8d2'],[15.5,'#b9cf9e'],[16.5,'#c7a865'],[17.5,'#c4925a'],[18.5,'#9c6f62'],[19.5,'#6a5079'],[20.5,'#38357c'],[21.5,'#1a2275'],[24,'#0b1670']];
+const hex2=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+function sky(h){h=((h%24)+24)%24;for(let i=0;i<SKY.length-1;i++){const[a,ca]=SKY[i],[b,cb]=SKY[i+1];if(h>=a&&h<=b){const t=(h-a)/(b-a),A=hex2(ca),B=hex2(cb);return A.map((v,k)=>Math.round(v+(B[k]-v)*t))}}return hex2(SKY[0][1])}
+const rgb=a=>`rgb(${a.join(',')})`;
+const lum=a=>(0.299*a[0]+0.587*a[1]+0.114*a[2])/255;
+
+/* ───────── 그리기 ───────── */
+const svg=document.getElementById('svg'), board=document.getElementById('board'), center=document.getElementById('center');
+let SEL=-1;
+
+function draw(){
+  svg.innerHTML='';
+  const g=el('g',{},svg);
+  // 밤중 잦은 깸 구간: 안쪽 칸을 남색으로
+  {const N=P[NIGHT];el('path',{d:band(R.c+2,R.s0,ang(N.s),ang(N.s+N.len)),fill:'#26325e'},g)}
+  // 시간 구분선
+  for(let h=0;h<24;h++){const[a0,b0]=pt(R.c+6,ang(h)),[a1,b1]=pt(R.pain0-4,ang(h));el('line',{x1:f(a0),y1:f(b0),x2:f(a1),y2:f(b1),stroke:(h>21||h<6)?'rgba(255,255,255,.14)':'#eceef3','stroke-width':1},g)}
+  // 감정 단계 가이드
+  for(let l=0;l<4;l++) el('circle',{cx:CX,cy:CY,r:lvR(l),fill:'none',stroke:'#e3e6ed','stroke-dasharray':'2 6'},g);
+  // 선택 쐐기
+  const selH=SEL<0?null:(H[SEL].h%24);
+  if(selH!=null) el('path',{d:band(R.c,R.pain0-2,ang(selH),ang(selH+1)),fill:'#f0a020','fill-opacity':.12},g);
+  // 하늘 고리
+  for(let k=0;k<96;k++){const h0=k/4;el('path',{d:band(R.s0,R.s1,ang(h0)-.25,ang(h0+.25)+.25),fill:rgb(sky(h0+.125))},g)}
+  for(let h=0;h<24;h++){const c=sky(h),[x,y]=pt(R.num,ang(h));
+    el('text',{x:f(x),y:f(y+4.5),'text-anchor':'middle','font-size':h%6===0?15:13,'font-weight':h%6===0||h===9?700:500,fill:lum(c)<.55?'#ffffff':'#1f2433','font-family':'IBM Plex Mono, monospace'},g).textContent=h===12?'정오':h===0?'자정':h}
+  // 페인포인트 (빨간 호)
+  let runs=[];H.forEach(x=>{if(x.i<24&&x.pain){const h=x.h%24,last=runs[runs.length-1];if(last&&((last[1])%24)===h)last[1]=h+1+(h+1<last[0]?24:0);else runs.push([h,h+1])}});
+  if(runs.length>1&&runs[0][0]===runs[runs.length-1][1]%24){const l=runs.pop();runs[0]=[l[0],runs[0][1]+(runs[0][1]<=l[0]?24:0)]}
+  runs.forEach(([a,b])=>el('path',{d:band(R.pain0,R.pain1,ang(a)+.6,ang(b)-.6),fill:'#e5484d'},g));
+  // 단계 띠 + 곡선 글자
+  const defs=el('defs',{},svg);
+  P.forEach((p,pi)=>{const a0=ang(p.s)+.5,a1=ang(p.s+p.len)-.5,mid=(a0+a1)/2,flip=(((mid%360)+360)%360)>90&&(((mid%360)+360)%360)<270;
+    el('path',{d:band(R.ph0,R.ph1,a0,a1),fill:p.bg},g);
+    const [x0,y0]=pt(R.ph,flip?a1:a0),[x1,y1]=pt(R.ph,flip?a0:a1),L=(a1-a0)>180?1:0;
+    el('path',{id:'pp'+pi,d:`M${f(x0)} ${f(y0)}A${R.ph} ${R.ph} 0 ${L} ${flip?0:1} ${f(x1)} ${f(y1)}`,fill:'none'},defs);
+    const t=el('text',{'font-size':13,'font-weight':700,fill:p.fg,dy:flip?9:4.5,'letter-spacing':'.02em'},g);
+    const tp=el('textPath',{href:'#pp'+pi,startOffset:'50%','text-anchor':'middle'},t);tp.textContent=p.sh});
+  if(selH!=null) el('path',{d:band(R.s0-1,R.ph1+1,ang(selH),ang(selH+1)),fill:'none',stroke:'#171a23','stroke-width':3,'stroke-linejoin':'round'},g);
+  // 시작·끝 표시
+  {const a=ang(9),[x0,y0]=pt(R.pain0-2,a),[x1,y1]=pt(R.ph1+6,a);el('line',{x1:f(x0),y1:f(y0),x2:f(x1),y2:f(y1),stroke:'#f0a020','stroke-width':3,'stroke-linecap':'round'},g);
+   const[tx,ty]=pt(R.bub+52,a);
+   el('text',{x:f(tx),y:f(ty),'text-anchor':'middle','font-size':16,'font-weight':900,fill:'#c27a00'},g).textContent='09:00 시작';
+   el('text',{x:f(tx),y:f(ty+18),'text-anchor':'middle','font-size':12,'font-weight':700,fill:'#868c9c'},g).textContent='시계 방향 ↻'}
+  // 감정 곡선
+  const pts=[];for(let h=0;h<24;h++){const x=H[(h-9+24)%24];pts.push(pt(lvR(x.lv),ang(h+.5)))}
+  let d=`M${f(pts[0][0])} ${f(pts[0][1])}`;const n=pts.length;
+  for(let i=0;i<n;i++){const p0=pts[(i-1+n)%n],p1=pts[i],p2=pts[(i+1)%n],p3=pts[(i+2)%n];d+=`C${f(p1[0]+(p2[0]-p0[0])/6)} ${f(p1[1]+(p2[1]-p0[1])/6)} ${f(p2[0]-(p3[0]-p1[0])/6)} ${f(p2[1]-(p3[1]-p1[1])/6)} ${f(p2[0])} ${f(p2[1])}`}
+  // 선 색: 반지름(감정 단계)에 따라 초록(편안) → 빨강(한계)
+  const rg=el('radialGradient',{id:'emoGrad',gradientUnits:'userSpaceOnUse',cx:CX,cy:CY,r:R.e0},defs);
+  [3,2,1,0].forEach(l=>el('stop',{offset:(lvR(l)/R.e0).toFixed(3),'stop-color':EMO[l][1]},rg));
+  el('path',{d:d+'Z',fill:'none',stroke:'#ffffff','stroke-width':14,'stroke-opacity':.9,'stroke-linejoin':'round'},g);
+  el('path',{d:d+'Z',fill:'none',stroke:'url(#emoGrad)','stroke-width':8,'stroke-linejoin':'round'},g);
+  for(let h=0;h<24;h++){const x=H[(h-9+24)%24],[px,py]=pts[h],on=selH===h,s=on?38:26;
+    el('circle',{cx:f(px),cy:f(py),r:s*.62,fill:'#ffffff',stroke:EMO[x.lv][1],'stroke-width':on?3.5:2.5},g);
+    el('text',{x:f(px),y:f(py+s*.36),'text-anchor':'middle','font-size':s},g).textContent=EMO[x.lv][0]}
+  // 터치포인트·로봇 기능 동그라미
+  for(let h=0;h<24;h++){const x=H[(h-9+24)%24],[bx,by]=pt(R.bub,ang(h+.5)),on=selH===h,r=on?R.bubR*1.45:R.bubR,ins=x.ins;
+    const bg=el('g',{},g);
+    if(ins.length>=2){el('path',{d:`M${f(bx)} ${f(by-r)}A${r} ${r} 0 0 0 ${f(bx)} ${f(by+r)}Z`,fill:IC[ins[0][0]][1]},bg);el('path',{d:`M${f(bx)} ${f(by-r)}A${r} ${r} 0 0 1 ${f(bx)} ${f(by+r)}Z`,fill:IC[ins[1][0]][1]},bg)}
+    else el('circle',{cx:f(bx),cy:f(by),r,fill:ins.length?IC[ins[0][0]][1]:'#ffffff'},bg);
+    el('circle',{cx:f(bx),cy:f(by),r,fill:'none',stroke:on?'#171a23':'#c9cdd8','stroke-width':on?2.5:1.2},bg);
+    const s=r*1.05;const ig=el('g',{transform:`translate(${f(bx-s/2)} ${f(by-s/2)}) scale(${(s/24).toFixed(3)})`},bg);
+    el('path',{d:ICO[x.ico],fill:'none',stroke:'#2a2f3c','stroke-width':1.8,'stroke-linecap':'round','stroke-linejoin':'round'},ig)}
+  // 클릭 영역
+  for(let h=0;h<24;h++){const idx=(h-9+24)%24;
+    const hp=el('path',{d:band(R.c,R.bub+R.bubR+6,ang(h),ang(h+1)),fill:'transparent',class:'hit'},svg);
+    hp.addEventListener('click',()=>go(idx===SEL?-1:idx))}
+}
+
+/* ───────── 행동 라벨 (HTML) ───────── */
+const labs=H.map(x=>{
+  const b=document.createElement('button');b.type='button';b.className='lab'+(x.i===24?' extra':'')+(P[NIGHT].cols.includes(x.i)?' night':'');
+  const a=x.i===24?ang(9):ang(x.h%24+.5);const[x1,y1]=pt(R.lab,a),[x2,y2]=pt(R.lab2,a);
+  b.style.setProperty('--x',x1/10+'%');b.style.setProperty('--y',y1/10+'%');b.style.setProperty('--x2',x2/10+'%');b.style.setProperty('--y2',y2/10+'%');
+  b.innerHTML=`<span class="k">${esc(x.kw).replace('\n','<br>')}</span><span class="t">${esc(x.t)}</span><span class="f">${esc(x.title)}</span><span class="w" style="background:${ACT[x.who]}">${esc(x.who)}</span>`;
+  b.setAttribute('aria-label',`${x.t} ${x.title}`);
+  b.addEventListener('click',()=>go(SEL===x.i?-1:x.i));
+  board.appendChild(b);return b});
+
+function drawCenter(){
+  if(SEL<0){center.innerHTML=`<div class="big">잘 못 잔 날</div><div class="sm ov">아기 수면 ${Math.floor(sleepMin/60)}시간 ${Math.round(sleepMin%60)}분<br>밤중 깸 3회 · 😫 한계 ${H.filter(x=>x.i<24&&x.lv===3).length}번</div><div class="hint">시간을 눌러 보세요</div>`;return}
+  const x=H[SEL],e=EMO[x.lv];
+  center.innerHTML=`<div class="em">${e[0]}</div><div class="tm">${esc(x.t)}</div><div class="q">${esc(x.q)}</div><div class="sm">${esc(x.ew)} · ${e[2]}</div>`;
+}
+
+/* ───────── 패널 ───────── */
+const panel=document.getElementById('panel');
+const guideRow=(svgInner,txt)=>`<svg width="30" height="22" viewBox="0 0 30 22">${svgInner}</svg><span>${txt}</span>`;
+function overviewPanel(){
+  const skyStops=SKY.filter((_,i)=>i%2===0).map(([h,c])=>`<stop offset="${h/24}" stop-color="${c}"/>`).join('');
+  panel.innerHTML=`<div><h2>하루의 흐름</h2><p class="muted">오른쪽 아래 09:00(도우미 출근)에서 시작해 시계 방향으로 한 바퀴 돌면 다음 날 09:00 인계입니다. 시간이나 글자를 누르면 그 행동이 크게 보입니다.</p></div>
+  <div class="guide">
+    ${guideRow(`<defs><linearGradient id="gsk"><stop offset="0" stop-color="#a3f1e3"/><stop offset=".5" stop-color="#c4925a"/><stop offset="1" stop-color="#0b1670"/></linearGradient></defs><rect x="1" y="7" width="28" height="9" rx="2" fill="url(#gsk)"/>`,'바깥 고리는 하늘색입니다. 위쪽이 밤, 아래쪽이 낮이에요.')}
+    ${guideRow(`<rect x="1" y="9" width="28" height="5" rx="2" fill="#e5484d"/>`,'빨간 선은 페인포인트가 있는 시간입니다.')}
+    ${guideRow(`<defs><linearGradient id="gem"><stop offset="0" stop-color="${EMO[0][1]}"/><stop offset=".55" stop-color="${EMO[2][1]}"/><stop offset="1" stop-color="${EMO[3][1]}"/></linearGradient></defs><path d="M2 5C11 5 18 17 28 17" fill="none" stroke="url(#gem)" stroke-width="5" stroke-linecap="round"/>`,'감정 곡선은 바깥쪽·초록일수록 편안하고, 안쪽·빨강일수록 힘든 순간입니다.')}
+    ${guideRow(`<rect x="1" y="3" width="28" height="16" rx="3" fill="#26325e"/>`,'남색 칸은 밤중 잦은 깸 시간(21~06시)입니다.')}
+    ${guideRow(`<circle cx="15" cy="11" r="9.5" fill="#a8dbff" stroke="#c9cdd8"/><g transform="translate(7.5 3.5) scale(.62)"><path d="${ICO.bottle}" fill="none" stroke="#2a2f3c" stroke-width="1.8" stroke-linecap="round"/></g>`,'동그라미 그림은 터치포인트, 색은 리치미니 기능입니다.')}
+  </div>
+  <div><div class="lbl">리치미니 기능</div><div class="chips">${Object.values(IC).map(([n,c,fg])=>`<span class="chip" style="background:${c};color:${fg}">${n}</span>`).join('')}</div></div>
+  <div>${P.map((p,pi)=>`<div class="phase"><h3><i style="background:${p.bg}"></i>${esc(p.n)} <span>${String(p.s).padStart(2,'0')}–${String((p.s+p.len)%24).padStart(2,'0')}시</span></h3>
+    ${p.cols.map(c=>rowHTML(H[c])).join('')}</div>`).join('')}
+    <div class="phase"><h3><i style="background:${P[0].bg}"></i>다음 날 아침 <span>+1일 09시</span></h3>${rowHTML(H[24])}</div></div>
+  ${navHTML()}`;
+  panel.querySelectorAll('.hrow').forEach(b=>b.addEventListener('click',()=>go(+b.dataset.i)));
+  bindNav();
+}
+const rowHTML=x=>`<button class="hrow" type="button" data-i="${x.i}"><span class="tm">${esc(x.t.replace('+1일 ','+1 '))}</span><span class="nm">${esc(x.title)}</span><span>${EMO[x.lv][0]}</span>${x.pain?'<i class="pd" title="페인포인트"></i>':'<i></i>'}</button>`;
+function navHTML(){
+  return `<div class="nav"><div class="progress" aria-hidden="true">${H.map(x=>`<i class="${x.i===SEL?'on':''}" style="background:${P[phaseOfIdx(x.i)].bg}"></i>`).join('')}</div>
+  <div class="row"><span class="pos">${SEL<0?'전체 보기':`${SEL+1} / ${H.length}`}</span><button class="btn" id="prevBtn" type="button" ${SEL<0?'disabled':''}>이전</button><button class="btn dark" id="nextBtn" type="button" ${SEL===H.length-1?'disabled':''}>${SEL<0?'09:00부터 보기':'다음'}</button></div>
+  <div class="keys"><kbd>←</kbd> <kbd>→</kbd> 이동 · <kbd>Esc</kbd> 전체 보기</div></div>`}
+function bindNav(){const pv=document.getElementById('prevBtn'),nx=document.getElementById('nextBtn');pv&&pv.addEventListener('click',()=>go(SEL-1));nx&&nx.addEventListener('click',()=>go(SEL+1))}
+function hourPanel(){
+  const x=H[SEL],p=P[phaseOfIdx(SEL)],e=EMO[x.lv];
+  panel.innerHTML=`<div class="top"><button class="btn" id="backBtn" type="button">전체 보기</button><span class="phtag" style="background:${p.bg};color:${p.fg}">${esc(p.n)}</span></div>
+  <div class="hour">
+    <div class="hhead"><div><div class="tm">${esc(x.t)}</div>${x.st?`<div class="st">${esc(x.st)}</div>`:''}</div><div class="emo"><b>${e[0]}</b>${e[2]}</div></div>
+    <div><span class="who" style="background:${ACT[x.who]}">${esc(x.who)}</span><h2 class="title">${esc(x.title)}</h2></div>
+    <p class="desc">${esc(x.desc)}</p>
+    <div class="quote" style="--emo-c:${e[1]}"><small>${esc(x.ew)}의 말</small>${esc(x.q)}</div>
+    ${x.pain?`<div><div class="lbl">PAIN POINT</div><div class="painbox">${esc(x.pain)}</div></div>`:''}
+    ${x.tp.length?`<div><div class="lbl">TOUCH POINT</div><div class="tags">${x.tp.map(t=>{const k=tpIcon(t);return `<span class="tag">${k?icoSVG(k,15):''}${esc(t)}</span>`}).join('')}</div></div>`:''}
+    ${x.ins.length?`<div><div class="lbl">INSIGHT · 리치미니 기능</div><div class="ins">${x.ins.map(([k,t,b])=>`<div class="icard" style="background:${IC[k][1]}"><div class="k" style="color:${IC[k][2]}">${IC[k][0]}</div><div class="h">${esc(t)}</div><div class="b">${esc(b)}</div></div>`).join('')}</div></div>`:''}
+  </div>
+  ${navHTML()}`;
+  document.getElementById('backBtn').addEventListener('click',()=>go(-1));
+  bindNav();
+}
+
+/* ───────── 상태 전환 ───────── */
+function go(i){
+  i=Math.max(-1,Math.min(H.length-1,i));SEL=i;
+  board.classList.toggle('has-sel',SEL>=0);
+  labs.forEach((b,k)=>b.classList.toggle('on',k===SEL));
+  draw();drawCenter();
+  if(SEL<0)overviewPanel();else{hourPanel();panel.scrollTop=0}
+}
+document.addEventListener('keydown',e=>{
+  if(e.target.closest&&e.target.closest('button')&&(e.key===' '||e.key==='Enter'))return;
+  if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){e.preventDefault();go(SEL+1)}
+  else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();go(SEL-1)}
+  else if(e.key==='Escape'||e.key==='Home'){go(-1)}
+});
+document.getElementById('presentBtn').addEventListener('click',async()=>{
+  const on=!document.body.classList.contains('present');document.body.classList.toggle('present',on);
+  document.getElementById('presentBtn').textContent=on?'발표 모드 끄기':'발표 모드';
+  try{if(on&&!document.fullscreenElement)await document.documentElement.requestFullscreen();else if(!on&&document.fullscreenElement)await document.exitFullscreen()}catch(err){}
+});
+document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&document.body.classList.contains('present')){document.body.classList.remove('present');document.getElementById('presentBtn').textContent='발표 모드'}});
+go(-1);
+</script>
+</body>
+</html>

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>신생아 가정 24시간 여정 시계</title>
+<meta name="description" content="잘 잔 날 · 잘 못 잔 날 · 위급상황이 있는 날, 신생아 가정의 세 가지 24시간을 원형 여정 시계로 비교합니다.">
+<meta property="og:title" content="신생아 가정 24시간 여정 시계">
+<meta property="og:description" content="잘 잔 날 · 잘 못 잔 날 · 위급상황이 있는 날을 원형 여정 시계로 비교">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;700;900&family=IBM+Plex+Mono:wght@600&display=swap">
+<style>
+/* 세 날을 탭으로 전환하는 첫 페이지. 각 날은 iframe으로 미리 불러 두고 탭을 누르면 바로 바뀐다.
+   주소 끝에 #day1 / #day2 / #day3 를 붙이면 그 날이 바로 열린다(PPT 링크용). */
+:root{
+  color-scheme:light;
+  --bg:#eef0f4; --surface:#ffffff; --line:#dcdfe7; --fg:#171a23; --fg2:#4b5162; --accent:#f0a020;
+  --font:'Noto Sans KR',system-ui,-apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{display:flex;flex-direction:column;background:var(--bg);color:var(--fg);font-family:var(--font);word-break:keep-all}
+nav{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;
+  padding:10px max(16px,env(safe-area-inset-right,0px)) 0 max(16px,env(safe-area-inset-left,0px))}
+.brand{font-size:13px;font-weight:700;color:var(--fg2);margin-right:6px}
+.tab{display:inline-flex;align-items:center;gap:7px;font-size:14px;font-weight:700;color:var(--fg2);text-decoration:none;
+  background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 14px 6px 10px}
+.tab:hover{border-color:#aab0bf;color:var(--fg)}
+.tab:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.tab b{font-family:var(--mono);font-size:11px;font-weight:600;border-radius:5px;padding:1px 6px;background:#eceef2;color:var(--fg2)}
+.tab i{width:9px;height:9px;border-radius:50%;flex:none}
+.tab[aria-current="page"]{background:var(--fg);border-color:var(--fg);color:#ffffff}
+.tab[aria-current="page"] b{background:#ffffff;color:var(--fg)}
+main{flex:1;min-height:0;position:relative}
+iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:var(--bg)}
+iframe[hidden]{display:none}
+@media (max-width:600px){.brand{display:none}.tab{font-size:13px;padding:5px 11px 5px 8px}}
+</style>
+</head>
+<body>
+<nav aria-label="날짜 선택">
+  <span class="brand">신생아 가정 24시간 여정 시계</span>
+  <a class="tab" href="#day1" data-day="day1"><b>DAY 1</b><i style="background:#2fa866"></i>잘 잔 날</a>
+  <a class="tab" href="#day2" data-day="day2"><b>DAY 2</b><i style="background:#f0883a"></i>잘 못 잔 날</a>
+  <a class="tab" href="#day3" data-day="day3"><b>DAY 3</b><i style="background:#e5484d"></i>위급상황이 있는 날</a>
+</nav>
+<main>
+  <iframe id="day1" src="day1.html" title="잘 잔 날 여정 시계" allow="fullscreen" allowfullscreen></iframe>
+  <iframe id="day2" src="day2.html" title="잘 못 잔 날 여정 시계" allow="fullscreen" allowfullscreen hidden></iframe>
+  <iframe id="day3" src="day3.html" title="위급상황이 있는 날 여정 시계" allow="fullscreen" allowfullscreen hidden></iframe>
+</main>
+<script>
+const DAYS=['day1','day2','day3'];
+function show(){
+  const want=(location.hash||'').replace('#','');
+  const day=DAYS.includes(want)?want:'day1';
+  DAYS.forEach(d=>{
+    document.getElementById(d).hidden=(d!==day);
+    const a=document.querySelector(`.tab[data-day="${d}"]`);
+    if(d===day)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');
+  });
+  const f=document.getElementById(day);
+  document.title=f.title.replace(' 여정 시계','')+' · 신생아 가정 24시간 여정 시계';
+  try{f.contentWindow&&f.contentWindow.focus()}catch(e){}
+}
+window.addEventListener('hashchange',show);
+show();
+</script>
+</body>
+</html>
